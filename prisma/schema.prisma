@@ -9,3 +9,11 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+// Tabela Pool;
+model Pool {
+	id String @id @default(cuid())
+	title String
+	code String @unique
+	createdAt DateTime @default(now())
+}
