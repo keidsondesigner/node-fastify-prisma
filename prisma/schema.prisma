@@ -14,10 +14,67 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Tabela Pool;
+// Tabela Pool'bolão';
 model Pool {
-	id String @id @default(cuid())
-	title String
-	code String @unique
-	createdAt DateTime @default(now())
+  id        String   @id @default(cuid())
+  title     String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  ownerId   String?
+
+  participant Participant[]
+  owner       User?         @relation(fields: [ownerId], references: [id])
+}
+
+model Participant {
+  id     String @id @default(cuid())
+  userId String
+  poolId String
+
+  guesses Guess[]
+  user    User    @relation(fields: [userId], references: [id])
+  pool    Pool    @relation(fields: [poolId], references: [id])
+
+  @@unique([userId, poolId])
+}
+
+// Tabela de usuario
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  //relacionamento com a tabela Participant e Pool
+  participatingAt Participant[]
+  ownPools        Pool[]
+}
+
+// Tabela de jogos
+model Game {
+  id   String   @id @default(cuid())
+  date DateTime
+
+  firstTeamCountryCode  String
+  secondTeamCountryCode String
+
+  //relacionamento inverso  com a tabela Guess
+  guesses Guess[]
+}
+
+// Tabela de palpites
+model Guess {
+  id String @id @default(cuid())
+
+  firstTeamPoints  Int
+  secondTeamPoints Int
+  createdAt        DateTime @default(now())
+  gameId           String
+
+  //relacionamento com a tabela Participant
+  participant   Participant @relation(fields: [participantId], references: [id])
+  //relacionamento com a tabela Game
+  game          Game        @relation(fields: [gameId], references: [id])
+  participantId String
 }
