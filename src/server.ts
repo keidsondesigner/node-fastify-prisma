@@ -1,10 +1,14 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { PrismaClient } from '@prisma/client';
+import jwt from '@fastify/jwt';
 
-const prisma = new PrismaClient({
-	log: ['query']
-});
+
+import { poolRoutes } from './routes/pool';
+import { authRoutes } from './routes/auth';
+import { gameRoutes } from './routes/game';
+import { guessRoutes } from './routes/guess';
+import { userRoutes } from './routes/user';
+
 
 async function bootstrap(){
 	const fastify = Fastify({
@@ -16,26 +20,21 @@ async function bootstrap(){
 		origin: true,
 	});
 
-
-	fastify.get('/pools/count', async () => {
-		// findMany retorna todos os registros da tabela;
-		// const pools = await prisma.pool.findMany({
-		// 	where: {
-		// 		code: {
-		// 			startsWith: 'D'
-		// 		}
-		// 	}
-		// })
-
-		// return { pools };
-
-		// count() retorna apenas a aquiatidade;
-		const count = await prisma.pool.count()
-		return { count }
+	// Em produção o secret deve ser uma .env ;
+	await fastify.register(jwt, {
+		secret: 'nlwcopa@2023',
 	});
 
-	await fastify.listen({ port: 3333, host: '0.0.0.0'});
-};
+	// **** Rotas
+	await fastify.register(poolRoutes);
+	await fastify.register(authRoutes);
+	await fastify.register(gameRoutes);
+	await fastify.register(guessRoutes);
+	await fastify.register(userRoutes);
 
+
+	//await fastify.listen({ port: 3333, host: '0.0.0.0'});
+	await fastify.listen({ port: 3333 });
+};
 
 bootstrap();
