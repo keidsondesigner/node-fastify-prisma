@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
 import ShortUniqueId from 'short-unique-id';
 import { z } from 'zod';
+import { authenticate } from "../plugins/authenticate";
 
 
 export async function poolRoutes(fastify: FastifyInstance){
@@ -25,22 +26,178 @@ export async function poolRoutes(fastify: FastifyInstance){
 
 
     // Retorna o bolão, com o nome do bolão recebido;
-	fastify.post('/pools', async (req, response) => {
+	fastify.post('/pools', async (request, response) => {
 		const createPoolBody = z.object({
 			title: z.string(),
 		})
-		const { title } = createPoolBody.parse(req.body);
+		const { title } = createPoolBody.parse(request.body);
 
 		const generate = new ShortUniqueId({ length: 6 });
 		const code = String(generate()).toUpperCase();
 
-		await prisma.pool.create({
-			data: {
-				title,
-				code,
-			}
-		});
+        try {
+            await request.jwtVerify();
+
+            await prisma.pool.create({
+                data: {
+                    title,
+                    code,
+                    ownerId: request.user.sub,
+
+                    // Crio o participants ao mesmo tempo que crio o bolão;
+                    participants: {
+                        create: {
+                            userId: request.user.sub,
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            await prisma.pool.create({
+                data: {
+                    title,
+                    code,
+                }
+            });
+        }
 
 		return response.status(201).send({code});
 	});
-}
+
+    // Rota para entrar em um bolão, este rota só é acessiível se o user estiver autenticado;
+    fastify.post('/pools/join',  { onRequest: [authenticate] }, async (request, response) => {
+        const joinPoolBody = z.object({
+            code: z.string(),
+        })
+
+        const { code } = joinPoolBody.parse(request.body);
+
+        // Verificamos se existe um bolão com o código digitado, e se esse user já está incluido nesse bolão;
+        const pool = await prisma.pool.findUnique({
+            where: {
+                code,
+            },
+            include: {
+                participants: {
+                    where: {
+                        userId: request.user.sub,
+                    }
+                }
+            }
+        });
+
+        // Se não existe um bolão com o código digitado, retorno uma mensagem de error;
+        if(!pool){
+            return response.status(400).send({
+                message: 'Pool not found.'
+            })
+        }
+
+        if(pool.participants.length > 0){
+            return response.status(400).send({
+                message: 'You already joined this pool.'
+            })
+        }
+
+        // Se o bolão não tem um dono o primeiro user a entrar, será o dono;
+        if(!pool.ownerId){
+            await prisma.pool.update({
+                where: {
+                    id: pool.id,
+                },
+                data: {
+                    ownerId: request.user.sub,
+                }
+            })
+        }
+
+        // Se passou por todas a as validações, vamos criar o o bolão;
+        await prisma.participant.create({
+            data: {
+                poolId: pool.id,
+                userId: request.user.sub,
+            }
+        })
+        return response.status(201).send();
+    });
+
+    // Buscar informaçoes do bolão como: dono, quantidade de participatens, retornar id e url do avatar dos 4 primeiros participantes e outros.
+    fastify.get('/pools',  { onRequest: [authenticate] }, async (request, response) => {
+        const pools = await prisma.pool.findMany({
+            where: {
+                participants: {
+                    some: {
+                        userId: request.user.sub,
+                    }
+                }
+            },
+            include: {
+                _count: {
+                    select: {
+                        participants: true,
+                    }
+                },
+                participants: {
+                    select: {
+                        id: true,
+                        user: {
+                            select: {
+                                avatarUrl: true,
+                            }
+                        }
+                    },
+                    take: 4,
+                },
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                }
+            }
+        })
+        return { pools };
+    });
+
+    // Filtrar bolão por id
+    fastify.get('/pools/:id',  { onRequest: [authenticate] }, async (request, response) => {
+        const getPoolParams = z.object({
+            id: z.string(),
+        })
+
+        const { id } = getPoolParams.parse(request.params);
+
+        const pool = await prisma.pool.findUnique({
+            where: {
+                id,
+            },
+            include: {
+                _count: {
+                    select: {
+                        participants: true,
+                    }
+                },
+                participants: {
+                    select: {
+                        id: true,
+                        user: {
+                            select: {
+                                avatarUrl: true,
+                            }
+                        }
+                    },
+                    take: 4,
+                },
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                }
+            }
+        })
+        return { pool };
+    });
+
+
+};
