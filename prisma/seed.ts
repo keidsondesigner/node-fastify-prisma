@@ -17,7 +17,7 @@ async function main() {
 			code: 'BOL123',
 			ownerId: user.id,
 
-			participant: {
+			participants: {
 				create: {
 					userId: user.id,
 				}
